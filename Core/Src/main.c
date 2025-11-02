@@ -80,7 +80,94 @@ int fputc(int ch, FILE *f)
 }
 float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
 /* USER CODE END 0 */
+float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
+  const float Kp_angle;
+	const float Kd_angle;
+	float measured_angle;
+	const float target_angle ;    //与光电管PD相关的参数
+	float angle_current_error;
+  float angle_pre_error;
 
+  float target_Angularvelocity;
+  float measured_Angularvelocity;
+  float Angularvelocity_current_error;
+  float Angularvelocity_pre_error;
+  const float Kp_Angularvelocity;       //与角速度PID相关的参数
+	const float Kd_Angularvelocity;
+  const float Ki_Angularvelocity;
+  float inte_Angularvelocity_error;
+
+  const float measured_vio;
+  float target_leftwheelvio;
+  float rotatevio_adding;
+  float target_rightwheelvio;
+  float measured_leftwheelvio;
+  float measured_rightwheelvio;
+	const float Kp_vio;             //与轮子转速PI相关的参数
+	const float Ki_vio;
+	float inte_rightvio_error;
+	float inte_leftvio_error;
+	float rightvio_currenterror;
+	float leftvio_currenterror;
+	float leftoutput;
+	float rightoutput;
+  float leftpwm;
+	float rightpwm;
+void PIDcontrollor () //第一种方案PID
+{  
+	 
+	 angle_current_error = target_angle-measured_angle;//通过光电管获得measured_angle，即所有光电管值的加权代数和，系数左负右正
+	 target_Angularvelocity = Kp_angle*angle_current_error+Kd_angle*(angle_current_error-angle_pre_error);//过第一个PD，得到角速度目标值，向左转为负，向右为正
+	
+	 Angularvelocity_current_error = target_Angularvelocity-measured_Angularvelocity;//通过陀螺仪得到measured_Angularvelocity
+	
+	//这里到底需不需要考虑陀螺仪的正负？目前看起来貌似不需要
+	 rotatevio_adding = Kp_Angularvelocity*Angularvelocity_current_error+    //过第二个PID，得到轮子需要的速度增量，左转为负
+	 Kd_Angularvelocity*(Angularvelocity_current_error-Angularvelocity_pre_error)+Ki_Angularvelocity*inte_Angularvelocity_error;
+	 inte_Angularvelocity_error += Angularvelocity_current_error;
+	
+	 target_leftwheelvio = measured_vio+rotatevio_adding;
+	 target_rightwheelvio = measured_vio-rotatevio_adding;//得到两轮分别的目标速度
+	 rightvio_currenterror = target_rightwheelvio-measured_rightwheelvio;
+	 leftvio_currenterror = target_rightwheelvio-measured_leftwheelvio;//得到轮子转速偏移量
+	
+	 rightoutput = Kp_vio*rightvio_currenterror+ Ki_vio*inte_rightvio_error;
+	 inte_rightvio_error+=rightvio_currenterror;
+	 leftoutput = Kp_vio*leftvio_currenterror+ Ki_vio*inte_leftvio_error;
+	 inte_leftvio_error+=leftvio_currenterror;//第三个PI给出输出值
+	 leftpwm= leftoutput;
+	 rightpwm=rightoutput;
+	
+   if (leftpwm > 3600) {
+     leftpwm = 3600;                 //限速
+   }
+	 else if (leftpwm <-3600) {
+     leftpwm =-3600;
+   }
+	
+	 
+   if (rightpwm > 3600) {
+     rightpwm = 3600;
+   }
+   else if (rightpwm <-3600) {
+     rightpwm =-3600;
+   }
+ 
+	 
+	 if ( leftpwm >= 0) {
+   TIM1->CCR1 =  leftpwm, HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
+ } else {
+   TIM1->CCR1 = -leftpwm, HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); // 操作ccr改pwm
+ }
+ 
+ 
+  if ( rightpwm >= 0) {
+   TIM1->CCR2 =  rightpwm, HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
+ } else {
+   TIM1->CCR2 = -rightpwm, HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+ }
+	  
+}
 /**
   * @brief  The application entry point.
   * @retval int
@@ -622,3 +709,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
