@@ -83,7 +83,7 @@ float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
 float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
   const float Kp_angle;
 	const float Kd_angle;
-	float measured_angle;
+     float measured_angle;
 	const float target_angle ;    //与光电管PD相关的参数
 	float angle_current_error;
   float angle_pre_error;
@@ -97,7 +97,7 @@ float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
   const float Ki_Angularvelocity;
   float inte_Angularvelocity_error;
 
-  const float measured_vio;
+  float measured_vio;
   float target_leftwheelvio;
   float rotatevio_adding;
   float target_rightwheelvio;
@@ -709,4 +709,5 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
 
