@@ -82,81 +82,104 @@ int fputc(int ch, FILE *f)
 }
 	//光电管
   int8_t photo_weight[12] = {-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6};  // 权值
-  uint8_t photo_val[12];
+  uint8_t photo_val[12]; //这是干嘛的？
 
   float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
-  const float Kp_angle;
-	const float Kd_angle;
-  volatile float measured_angle;
-	const float target_angle ;    //与光电管PD相关的参数
-	float angle_current_error;
-  float angle_pre_error;
+  // PID控制器结构体
+typedef struct {
+    // 参数
+    float Kp;
+    float Ki;
+    float Kd;
+    
+    // 状态变量
+    float current_error;
+    float pre_error;
+    float inte_error;
+    
+    // 积分限幅
+    float integral_limit;
+} PID_Controller;
 
-  float target_Angularvelocity;
-  volatile float measured_Angularvelocity;
-  volatile float Angularvelocity_current_error;
-  volatile float Angularvelocity_pre_error;
-  const float Kp_Angularvelocity;       //与角速度PID相关的参数
-	const float Kd_Angularvelocity;
-  const float Ki_Angularvelocity;
-  volatile float inte_Angularvelocity_error;
 
-  volatile float measured_vio;
-  float target_leftwheelvio;
-  float rotatevio_adding;
-  float target_rightwheelvio;
-  volatile float measured_leftwheelvio;
-  volatile float measured_rightwheelvio;
-	const float Kp_vio;             //与轮子转速PI相关的参数
-	const float Ki_vio;
-	volatile float inte_rightvio_error;
-	volatile float inte_leftvio_error;
-	volatile float rightvio_currenterror;
-	volatile float leftvio_currenterror;
-	float leftoutput;
-	float rightoutput;
-  float leftpwm;
-	float rightpwm;
-void Calculate_measured_angle()
+
+// 全局变量
+const float Kp_angle;
+const float Kd_angle;
+volatile float measured_angle;
+const float target_angle=0f;    // 与光电管PD相关的参数
+
+float target_Angularvelocity;
+volatile float measured_Angularvelocity;
+const float integralLimit0 = 100.0f;  // 角速度环积分限幅
+
+volatile float target_translation_vio；//目标平动速度
+float target_leftwheelvio;
+float rotatevio_adding;
+float target_rightwheelvio;
+volatile float measured_leftwheelvio;
+volatile float measured_rightwheelvio;
+const float integralLimit1 = 100.0f;  // 速度环积分限幅
+
+float leftoutput;
+float rightoutput;
+float leftpwm;
+float rightpwm;
+
+三个结构体定义
+PID_Controller angle_pid = {Kp_angle, 0, Kd_angle, 0, 0, 0, 0};  // 角度环只有PD
+PID_Controller angular_velocity_pid = {Kp_Angularvelocity, Ki_Angularvelocity, Kd_Angularvelocity, 0, 0, 0, integralLimit0};
+PID_Controller velocity_pid = {Kp_vio, Ki_vio, 0, 0, 0, 0, integralLimit1};
+//前三个为PID参数，接下来三个是目前误差，前一次误差，以及积分加和误差，最后一个参数是积分限幅
+
+/*void Calculate_measured_angle()
 {
+    // 实现测量角度计算
+}*/
+//这里不需要
+
+// PID计算函数
+float PID_Calculate(PID_Controller* pid, float target, float measured)
+{
+    pid->current_error = target - measured;
+    
+    float output = pid->Kp * pid->current_error + 
+                   pid->Kd * (pid->current_error - pid->pre_error);
+    
+    // 只有Ki不为0时才计算积分项
+    if (pid->Ki != 0) {
+        pid->inte_error += pid->current_error;
+        
+        // 积分饱和处理
+        if (pid->inte_error > pid->integral_limit) {
+            pid->inte_error = pid->integral_limit;
+        } else if (pid->inte_error < -pid->integral_limit) {
+            pid->inte_error = -pid->integral_limit;
+        }
+        
+        output += pid->Ki * pid->inte_error;
+    }
+    
+    pid->pre_error = pid->current_error;
+    return output;
 }
-void PIDcontrollor () //第一种方案PID
+
+void PIDcontrollor() // 第一种方案PID
 {  
-	 //转向环																						//如果这样定义的话，target_angle一直是0喽？
-	 angle_current_error = target_angle-measured_angle;//通过光电管获得measured_angle，即所有光电管值的加权代数和，系数左负右正
-	 target_Angularvelocity = Kp_angle*angle_current_error+Kd_angle*(angle_current_error-angle_pre_error);//过第一个PD，得到角速度目标值，
-	                                                                                                      //向左转为负，向右为正
-	 angle_pre_error=angle_current_error;//更新angle_pre_error
-	
-	 //角速度环
-	 Angularvelocity_current_error = target_Angularvelocity-measured_Angularvelocity;//通过陀螺仪得到measured_Angularvelocity
-	
-	//这里到底需不需要考虑陀螺仪的正负？目前看起来貌似不需要//按理来说应该是顺时针正吧，可是该怎么调试呢？
-	 rotatevio_adding = Kp_Angularvelocity*Angularvelocity_current_error+    //过第二个PID，得到轮子需要的速度增量，左转为负
-	 Kd_Angularvelocity*(Angularvelocity_current_error-Angularvelocity_pre_error)+Ki_Angularvelocity*inte_Angularvelocity_error;
-	 inte_Angularvelocity_error += Angularvelocity_current_error;
-	 if (inte_Angularvelocity_error > integralLimit0) {           //积分饱和处理,integralLimit一般为输出上限的2、3倍。
-			inte_Angularvelocity_error = integralLimit0;
-	 } else if (inte_Angularvelocity_error < -integralLimit0) {
-      inte_Angularvelocity_error = -integralLimit0;
-   }
-	 Angularvelocity_pre_error=Angularvelocity_current_error;
-	
-	 //速度环
-	 target_leftwheelvio = measured_vio+rotatevio_adding;
-	 target_rightwheelvio = measured_vio-rotatevio_adding;//得到两轮分别的目标速度
-	 rightvio_currenterror = target_rightwheelvio-measured_rightwheelvio;
-	 leftvio_currenterror = target_leftwheelvio-measured_leftwheelvio;//得到轮子转速偏移量
-	
-	 rightoutput = Kp_vio*rightvio_currenterror+ Ki_vio*inte_rightvio_error;
-	 inte_rightvio_error+=rightvio_currenterror;
-	 if (inte_rightvio_error > integralLimit1) {           //积分饱和处理,integralLimit一般为输出上限的2、3倍。
-			inte_rightvio_error = integralLimit1;
-	 } else if (inte_rightvio_error < -integralLimit1) {
-      inte_rightvio_error = -integralLimit1;
-   }
-	 leftoutput = Kp_vio*leftvio_currenterror+ Ki_vio*inte_leftvio_error;
-	 inte_leftvio_error+=leftvio_currenterror;//第三个PI给出输出值
+    // 转向环
+    target_Angularvelocity = PID_Calculate(&angle_pid, target_angle, measured_angle);
+    
+    // 角速度环
+    rotatevio_adding = PID_Calculate(&angular_velocity_pid, target_Angularvelocity, measured_Angularvelocity);
+    
+    // 速度环
+    target_leftwheelvio =  target_translation_vio + rotatevio_adding;
+    target_rightwheelvio = target_translation_vio - rotatevio_adding;
+    
+    // 左右轮分别控制
+    rightoutput = PID_Calculate(&velocity_pid, target_rightwheelvio, measured_rightwheelvio);
+    leftoutput = PID_Calculate(&velocity_pid, target_leftwheelvio, measured_leftwheelvio);
+}
 /*	 leftpwm= leftoutput;
 	 rightpwm=rightoutput;
 	
@@ -191,18 +214,22 @@ void PIDcontrollor () //第一种方案PID
 	  */
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	if(htim==&htim2){		//TIM2是1ms中断，需要改成5ms中断么？（或者不改中断，在中断回调函数进行计数）
+	if(htim==&htim2){		//TIM2是1ms中断，需要改成5ms中断么？（或者不改中断，在中断回调函数进行计数）  改成5ms为好，或者干到10ms应该也没啥事
 		measured_leftwheelvio  = (int16_t)__HAL_TIM_GET_COUNTER(&htim4);
 		measured_rightwheelvio = (int16_t)__HAL_TIM_GET_COUNTER(&htim3);
 		__HAL_TIM_SET_COUNTER(&htim4, 0);
 		__HAL_TIM_SET_COUNTER(&htim3, 0);
-		
+		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全
+			{
+				measured_angle += photo_weight[i] * (MUX_GET_CHANNEL(mux_value,i));//读取并计算光电管加权值
+			}
 		PIDcontrollor();
+		measured_angle=0;//清零
 		
 		
 		//输出限幅和调整
 	 leftpwm= leftoutput;
-	 rightpwm=rightoutput;
+	 rightpwm= rightoutput;
 	
    if (leftpwm > 3600) {
      leftpwm = 3600;                 //限速
@@ -293,8 +320,8 @@ int main(void)
 
     //以下为读取光电管的示例（从左到右编号0~11）
     uint16_t mux_value;
-    MUX_get_value(&mux_value);
-    for(int i=0;i<=11;i++){
+    MUX_get_value(&mux_value); 
+	  for(int i=0;i<=11;i++){
       printf("%d,",MUX_GET_CHANNEL(mux_value,i));//获取第i个光电管的数值并输出
     }
     printf("\n");
@@ -776,5 +803,6 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
 
 
