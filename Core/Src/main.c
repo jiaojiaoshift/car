@@ -34,8 +34,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define integralLimit0 (20000)  //此值需计算
-#define integralLimit1 (20000)
+//#define integralLimit0 (20000)  //此值需计算
+//#define integralLimit1 (20000)  后面加了
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -803,6 +803,7 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
 
 
 
