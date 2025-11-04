@@ -82,7 +82,7 @@ int fputc(int ch, FILE *f)
 }
 	//光电管
   int8_t photo_weight[12] = {-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6};  // 权值
-  uint8_t photo_val[12]; //这是干嘛的？
+  uint8_t photo_val[12]; //这是干嘛的？//记录比较器的输出是多少
 
   float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
   // PID控制器结构体
@@ -104,16 +104,25 @@ typedef struct {
 
 
 // 全局变量
-const float Kp_angle;
-const float Kd_angle;
+/*const float Kp_angle=0;
+const float Kd_angle=0;*/
 volatile float measured_angle;
-const float target_angle=0f;    // 与光电管PD相关的参数
+
+/*const float Kp_Angularvelocity=0;
+const float Ki_Angularvelocity=0;
+const float Kd_Angularvelocity=0;*/
+
+/*const float Kp_vio=0;
+const float Ki_vio=0;*/
+
+const float target_angle=0;    // 与光电管PD相关的参数
+uint16_t mux_value;            //存储光电管从多路复用器（MUX）读取到的 “打包数据”
 
 float target_Angularvelocity;
 volatile float measured_Angularvelocity;
 const float integralLimit0 = 100.0f;  // 角速度环积分限幅
 
-volatile float target_translation_vio；//目标平动速度
+volatile float target_translation_vio;//目标平动速度
 float target_leftwheelvio;
 float rotatevio_adding;
 float target_rightwheelvio;
@@ -126,10 +135,10 @@ float rightoutput;
 float leftpwm;
 float rightpwm;
 
-三个结构体定义
-PID_Controller angle_pid = {Kp_angle, 0, Kd_angle, 0, 0, 0, 0};  // 角度环只有PD
-PID_Controller angular_velocity_pid = {Kp_Angularvelocity, Ki_Angularvelocity, Kd_Angularvelocity, 0, 0, 0, integralLimit0};
-PID_Controller velocity_pid = {Kp_vio, Ki_vio, 0, 0, 0, 0, integralLimit1};
+//三个结构体定义
+PID_Controller angle_pid_pd = {.Kp=0, 0, .Kd=0, 0, 0, 0, 0};  // 角度环只有PD
+PID_Controller angular_velocity_pid_pid = {.Kp=0, .Ki=0, .Kd=0, 0, 0, 0, integralLimit0};
+PID_Controller velocity_pid_pi = {.Kp=0, .Ki=0, 0, 0, 0, 0, integralLimit1};
 //前三个为PID参数，接下来三个是目前误差，前一次误差，以及积分加和误差，最后一个参数是积分限幅
 
 /*void Calculate_measured_angle()
@@ -167,19 +176,19 @@ float PID_Calculate(PID_Controller* pid, float target, float measured)
 void PIDcontrollor() // 第一种方案PID
 {  
     // 转向环
-    target_Angularvelocity = PID_Calculate(&angle_pid, target_angle, measured_angle);
+    target_Angularvelocity = PID_Calculate(&angle_pid_pd, target_angle, measured_angle);
     
     // 角速度环
-    rotatevio_adding = PID_Calculate(&angular_velocity_pid, target_Angularvelocity, measured_Angularvelocity);
+    rotatevio_adding = PID_Calculate(&angular_velocity_pid_pid, target_Angularvelocity, measured_Angularvelocity);
     
     // 速度环
     target_leftwheelvio =  target_translation_vio + rotatevio_adding;
     target_rightwheelvio = target_translation_vio - rotatevio_adding;
     
     // 左右轮分别控制
-    rightoutput = PID_Calculate(&velocity_pid, target_rightwheelvio, measured_rightwheelvio);
-    leftoutput = PID_Calculate(&velocity_pid, target_leftwheelvio, measured_leftwheelvio);
-}
+    rightoutput = PID_Calculate(&velocity_pid_pi, target_rightwheelvio, measured_rightwheelvio);
+    leftoutput = PID_Calculate(&velocity_pid_pi, target_leftwheelvio, measured_leftwheelvio);
+
 /*	 leftpwm= leftoutput;
 	 rightpwm=rightoutput;
 	
@@ -219,7 +228,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		measured_rightwheelvio = (int16_t)__HAL_TIM_GET_COUNTER(&htim3);
 		__HAL_TIM_SET_COUNTER(&htim4, 0);
 		__HAL_TIM_SET_COUNTER(&htim3, 0);
-		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全
+
+		MUX_get_value(&mux_value); 
+		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全//单从循环本身看，12 次迭代的耗时通常很短（可能在微秒级，远小于 1ms）
 			{
 				measured_angle += photo_weight[i] * (MUX_GET_CHANNEL(mux_value,i));//读取并计算光电管加权值
 			}
@@ -318,13 +329,17 @@ int main(void)
     accel_z=BMI270_acc_transition(BMI270_accel_z);
     printf("G: %f %f %f | A: %f %f %f\r\n", gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z);//输出陀螺仪读数，测试是否成功启动，正常使用时不需要这行代码
 
-    //以下为读取光电管的示例（从左到右编号0~11）
+    
+		
+		
+		
+		/*//以下为读取光电管的示例（从左到右编号0~11）
     uint16_t mux_value;
     MUX_get_value(&mux_value); 
 	  for(int i=0;i<=11;i++){
       printf("%d,",MUX_GET_CHANNEL(mux_value,i));//获取第i个光电管的数值并输出
     }
-    printf("\n");
+    printf("\n");*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
