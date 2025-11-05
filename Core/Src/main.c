@@ -25,6 +25,7 @@
 #include "dodo_BMI270.h" //陀螺仪驱动
 #include "multiplexer.h"//多路复用器驱动，用于读取光电管读数
 #include "stdio.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -118,7 +119,7 @@ const float Ki_vio=0;*/
 const float target_angle=0;    // 与光电管PD相关的参数
 uint16_t mux_value;            //存储光电管从多路复用器（MUX）读取到的 “打包数据”
 
-float target_Angularvelocity;
+volatile float target_Angularvelocity;
 volatile float measured_Angularvelocity;
 const float integralLimit0 = 100.0f;  // 角速度环积分限幅
 
@@ -222,6 +223,27 @@ void PIDcontrollor() // 第一种方案PID
  }
 	  */
 }
+void if_Stoprunning()
+{		
+		int counter=0;
+	
+		for(int j=0;j<=11;j++)
+			{
+				if(photo_val[i]==0)
+				{                 
+					counter++;          //检测所有的光电管是不是都检测到界外
+				}
+			}
+	
+		if(counter==0)
+			{
+				target_translation_vio=0; //如果完全处于界外，停车
+			}
+	
+}
+
+
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim==&htim2){		//TIM2是1ms中断，需要改成5ms中断么？（或者不改中断，在中断回调函数进行计数）  改成5ms为好，或者干到10ms应该也没啥事
 		measured_leftwheelvio  = (int16_t)__HAL_TIM_GET_COUNTER(&htim4);
@@ -229,13 +251,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		__HAL_TIM_SET_COUNTER(&htim4, 0);
 		__HAL_TIM_SET_COUNTER(&htim3, 0);
 
-		MUX_get_value(&mux_value); 
+		MUX_get_value(&mux_value);
 		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全//单从循环本身看，12 次迭代的耗时通常很短（可能在微秒级，远小于 1ms）
 			{
-				measured_angle += photo_weight[i] * (MUX_GET_CHANNEL(mux_value,i));//读取并计算光电管加权值
+				photo_val[i]=MUX_GET_CHANNEL(mux_value,i);
+				measured_angle += photo_weight[i] * (photo_val[i]); //读取并计算光电管加权                      
 			}
+	    if_Stoprunning();//检测小车是否出界并自动停车
 		PIDcontrollor();
-		measured_angle=0;//清零
+		measured_angle=0;
+		memset(photo_val,0,sizeof(photo_val));//清零
 		
 		
 		//输出限幅和调整
@@ -818,6 +843,7 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
 
 
 
