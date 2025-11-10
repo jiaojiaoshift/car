@@ -83,7 +83,7 @@ int fputc(int ch, FILE *f)
 }
 	//光电管
   int8_t photo_weight[12] = {-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6};  // 权值
-  uint8_t photo_val[12]; //这是干嘛的？//记录比较器的输出是多少
+  uint8_t photo_val[12]={0}; //这是干嘛的？//记录比较器的输出是多少
 
   float gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z;//陀螺仪数据
   // PID控制器结构体
@@ -124,7 +124,7 @@ volatile float measured_Angularvelocity;
 const float integralLimit0 = 100.0f;  // 角速度环积分限幅
 
 volatile float target_translation_vio;//目标平动速度
-float target_leftwheelvio;
+float target_leftwheelvio=100;
 float rotatevio_adding;
 float target_rightwheelvio;
 volatile float measured_leftwheelvio;
@@ -139,8 +139,8 @@ float rightpwm;
 //三个结构体定义
 PID_Controller angle_pid_pd = {.Kp=0, 0, .Kd=0, 0, 0, 0, 0};  // 角度环只有PD
 PID_Controller angular_velocity_pid_pid = {.Kp=0, .Ki=0, .Kd=0, 0, 0, 0, integralLimit0};
-PID_Controller velocity_pid_pi_left = {.Kp=0, .Ki=0, 0, 0, 0, 0, integralLimit1};
-PID_Controller velocity_pid_pi_right = {.Kp=0, .Ki=0, 0, 0, 0, 0, integralLimit1};
+PID_Controller velocity_pid_pi_left = {.Kp=15, .Ki=0, 0, 0, 0, 0, integralLimit1};
+PID_Controller velocity_pid_pi_right = {.Kp=15, .Ki=0, 0, 0, 0, 0, integralLimit1};
 
 //前三个为PID参数，接下来三个是目前误差，前一次误差，以及积分加和误差，最后一个参数是积分限幅
 
@@ -182,7 +182,7 @@ void PIDcontrollor() // 第一种方案PID
     target_Angularvelocity = PID_Calculate(&angle_pid_pd, target_angle, measured_angle);
     
     // 角速度环
-		measured_Angularvelocity=gyro_z;
+		measured_Angularvelocity=gyro_z;//左正右负
     rotatevio_adding = PID_Calculate(&angular_velocity_pid_pid, target_Angularvelocity, measured_Angularvelocity);
     
     // 速度环
@@ -303,6 +303,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	}
 }
 /* USER CODE END 0 */
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -341,7 +342,11 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 	dodo_BMI270_init();//初始化陀螺仪
-
+  HAL_TIM_Base_Start_IT(&htim2);
+	HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
+	HAL_TIM_Encoder_Start(&htim3,TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim3,TIM_CHANNEL_ALL);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -353,11 +358,12 @@ int main(void)
     gyro_x=BMI270_gyro_transition(BMI270_gyro_x);//将原始陀螺仪数据转换为物理值，单位为度每秒
     gyro_y=BMI270_gyro_transition(BMI270_gyro_y);
     gyro_z=BMI270_gyro_transition(BMI270_gyro_z);
-
+		TIM1->CCR1=1000;
     accel_x=BMI270_acc_transition(BMI270_accel_x);//将原始加速度计数据转换为物理值，单位为g，一般不需要使用此数据
     accel_y=BMI270_acc_transition(BMI270_accel_y);
     accel_z=BMI270_acc_transition(BMI270_accel_z);
-    printf("G: %f %f %f | A: %f %f %f\r\n", gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z);//输出陀螺仪读数，测试是否成功启动，正常使用时不需要这行代码
+    //printf("G: %f %f %f | A: %f %f %f\r\n", gyro_x, gyro_y, gyro_z, accel_x, accel_y, accel_z);
+		//输出陀螺仪读数，测试是否成功启动，正常使用时不需要这行代码
 
     
 		
@@ -501,7 +507,7 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 1000;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -511,6 +517,7 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
+  sConfigOC.Pulse = 0;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -848,8 +855,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-
-
-
-
