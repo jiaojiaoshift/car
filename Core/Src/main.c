@@ -139,7 +139,9 @@ float rightpwm;
 //三个结构体定义
 PID_Controller angle_pid_pd = {.Kp=0, 0, .Kd=0, 0, 0, 0, 0};  // 角度环只有PD
 PID_Controller angular_velocity_pid_pid = {.Kp=0, .Ki=0, .Kd=0, 0, 0, 0, integralLimit0};
-PID_Controller velocity_pid_pi = {.Kp=0, .Ki=0, 0, 0, 0, 0, integralLimit1};
+PID_Controller velocity_pid_pi_left = {.Kp=0, .Ki=0, 0, 0, 0, 0, integralLimit1};
+PID_Controller velocity_pid_pi_right = {.Kp=0, .Ki=0, 0, 0, 0, 0, integralLimit1};
+
 //前三个为PID参数，接下来三个是目前误差，前一次误差，以及积分加和误差，最后一个参数是积分限幅
 
 /*void Calculate_measured_angle()
@@ -188,8 +190,8 @@ void PIDcontrollor() // 第一种方案PID
     target_rightwheelvio = target_translation_vio - rotatevio_adding;
     
         // 左右轮分别控制
-    rightoutput = PID_Calculate(&velocity_pid_pi, target_rightwheelvio, measured_rightwheelvio);
-    leftoutput = PID_Calculate(&velocity_pid_pi, target_leftwheelvio, measured_leftwheelvio);
+    rightoutput = PID_Calculate(&velocity_pid_pi_right, target_rightwheelvio, measured_rightwheelvio);
+    leftoutput = PID_Calculate(&velocity_pid_pi_left, target_leftwheelvio, measured_leftwheelvio);
 
 /*	 leftpwm= leftoutput;
 	 rightpwm=rightoutput;
@@ -227,7 +229,7 @@ void PIDcontrollor() // 第一种方案PID
 void if_Stoprunning()
 {		
 		int counter=0;
-	
+																
 		for(int j=0;j<=11;j++)
 			{
 				if(photo_val[j]==0)
@@ -255,7 +257,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		MUX_get_value(&mux_value);
 		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全//单从循环本身看，12 次迭代的耗时通常很短（可能在微秒级，远小于 1ms）
 			{
-				photo_val[i]=MUX_GET_CHANNEL(mux_value,i);
+				photo_val[i]=MUX_GET_CHANNEL(mux_value,i);//白色为1，蓝色为0
 				printf("%d ",photo_val[i]);//测试光电管Vb
 				measured_angle += photo_weight[i] * (photo_val[i]); //读取并计算光电管加权                      
 			}
