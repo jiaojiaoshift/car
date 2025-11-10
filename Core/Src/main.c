@@ -123,8 +123,8 @@ volatile float target_Angularvelocity;
 volatile float measured_Angularvelocity;
 const float integralLimit0 = 100.0f;  // 角速度环积分限幅
 
-volatile float target_translation_vio;//目标平动速度
-float target_leftwheelvio=100;
+volatile float target_translation_vio=50;//目标平动速度
+float target_leftwheelvio;
 float rotatevio_adding;
 float target_rightwheelvio;
 volatile float measured_leftwheelvio;
@@ -132,15 +132,15 @@ volatile float measured_rightwheelvio;
 const float integralLimit1 = 100.0f;  // 速度环积分限幅
 
 float leftoutput;
-float rightoutput;
 float leftpwm;
+float rightoutput;
 float rightpwm;
 
 //三个结构体定义
 PID_Controller angle_pid_pd = {.Kp=0, 0, .Kd=0, 0, 0, 0, 0};  // 角度环只有PD
 PID_Controller angular_velocity_pid_pid = {.Kp=0, .Ki=0, .Kd=0, 0, 0, 0, integralLimit0};
-PID_Controller velocity_pid_pi_left = {.Kp=15, .Ki=0, 0, 0, 0, 0, integralLimit1};
-PID_Controller velocity_pid_pi_right = {.Kp=15, .Ki=0, 0, 0, 0, 0, integralLimit1};
+PID_Controller velocity_pid_pi_left = {.Kp=70, .Ki=13, 0, 0, 0, 0, integralLimit1};
+PID_Controller velocity_pid_pi_right = {.Kp=70, .Ki=13, 0, 0, 0, 0, integralLimit1};
 
 //前三个为PID参数，接下来三个是目前误差，前一次误差，以及积分加和误差，最后一个参数是积分限幅
 
@@ -250,7 +250,7 @@ void if_Stoprunning()
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim==&htim2){		//TIM2是1ms中断，需要改成5ms中断么？（或者不改中断，在中断回调函数进行计数）  改成5ms为好，或者干到10ms应该也没啥事
 		measured_leftwheelvio  = (int16_t)__HAL_TIM_GET_COUNTER(&htim4);
-		measured_rightwheelvio = (int16_t)__HAL_TIM_GET_COUNTER(&htim3);
+		measured_rightwheelvio = -(int16_t)__HAL_TIM_GET_COUNTER(&htim3);
 		__HAL_TIM_SET_COUNTER(&htim4, 0);
 		__HAL_TIM_SET_COUNTER(&htim3, 0);
 
@@ -258,11 +258,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全//单从循环本身看，12 次迭代的耗时通常很短（可能在微秒级，远小于 1ms）
 			{
 				photo_val[i]=MUX_GET_CHANNEL(mux_value,i);//白色为1，蓝色为0
-				printf("%d ",photo_val[i]);//测试光电管Vb
+			//	printf("%d ",photo_val[i]);//测试光电管Vb
 				measured_angle += photo_weight[i] * (photo_val[i]); //读取并计算光电管加权                      
 			}
-			printf("\n");
-	  if_Stoprunning();//检测小车是否出界并自动停车
+			//printf("\n");
+	  //if_Stoprunning();//检测小车是否出界并自动停车
 		PIDcontrollor();
 		measured_angle=0;
 		memset(photo_val,0,sizeof(photo_val));//清零
@@ -289,9 +289,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
  
 	 
 	 if ( leftpwm >= 0) {
-		 TIM1->CCR1 =  leftpwm, HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
+		 TIM1->CCR1 =  leftpwm, HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
 	 } else {
-		 TIM1->CCR1 = -leftpwm, HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); // 操作ccr改pwm
+		 TIM1->CCR1 = -leftpwm, HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET); // 操作ccr改pwm
 	 }
  
  
@@ -301,6 +301,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
      TIM1->CCR2 = -rightpwm, HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
    }
 	}
+		printf("%f\r\n",measured_rightwheelvio);
 }
 /* USER CODE END 0 */
 
@@ -346,7 +347,7 @@ int main(void)
 	HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 	HAL_TIM_Encoder_Start(&htim3,TIM_CHANNEL_ALL);
-	HAL_TIM_Encoder_Start(&htim3,TIM_CHANNEL_ALL);
+	HAL_TIM_Encoder_Start(&htim4,TIM_CHANNEL_ALL);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -358,7 +359,8 @@ int main(void)
     gyro_x=BMI270_gyro_transition(BMI270_gyro_x);//将原始陀螺仪数据转换为物理值，单位为度每秒
     gyro_y=BMI270_gyro_transition(BMI270_gyro_y);
     gyro_z=BMI270_gyro_transition(BMI270_gyro_z);
-		TIM1->CCR1=1000;
+		//TIM1->CCR1=3000;
+	
     accel_x=BMI270_acc_transition(BMI270_accel_x);//将原始加速度计数据转换为物理值，单位为g，一般不需要使用此数据
     accel_y=BMI270_acc_transition(BMI270_accel_y);
     accel_z=BMI270_acc_transition(BMI270_accel_z);
