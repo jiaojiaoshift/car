@@ -180,13 +180,14 @@ void PIDcontrollor() // 第一种方案PID
     target_Angularvelocity = PID_Calculate(&angle_pid_pd, target_angle, measured_angle);
     
     // 角速度环
+		measured_Angularvelocity=gyro_z;
     rotatevio_adding = PID_Calculate(&angular_velocity_pid_pid, target_Angularvelocity, measured_Angularvelocity);
     
     // 速度环
     target_leftwheelvio =  target_translation_vio + rotatevio_adding;
     target_rightwheelvio = target_translation_vio - rotatevio_adding;
     
-    // 左右轮分别控制
+        // 左右轮分别控制
     rightoutput = PID_Calculate(&velocity_pid_pi, target_rightwheelvio, measured_rightwheelvio);
     leftoutput = PID_Calculate(&velocity_pid_pi, target_leftwheelvio, measured_leftwheelvio);
 
@@ -229,7 +230,7 @@ void if_Stoprunning()
 	
 		for(int j=0;j<=11;j++)
 			{
-				if(photo_val[i]==0)
+				if(photo_val[j]==0)
 				{                 
 					counter++;          //检测所有的光电管是不是都检测到界外
 				}
@@ -255,9 +256,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		for(int i=0;i<=11;i++)//这个循环要塞在这里吗？放到中断回调不知道是不是会有问题，但是放到主循环又容易读不全//单从循环本身看，12 次迭代的耗时通常很短（可能在微秒级，远小于 1ms）
 			{
 				photo_val[i]=MUX_GET_CHANNEL(mux_value,i);
+				printf("%d ",photo_val[i]);//测试光电管Vb
 				measured_angle += photo_weight[i] * (photo_val[i]); //读取并计算光电管加权                      
 			}
-	    if_Stoprunning();//检测小车是否出界并自动停车
+			printf("\n");
+	  if_Stoprunning();//检测小车是否出界并自动停车
 		PIDcontrollor();
 		measured_angle=0;
 		memset(photo_val,0,sizeof(photo_val));//清零
